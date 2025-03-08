@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="static/favicon.ico">
+    <title>RAG Chatbot</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+            height: 100vh;
+            margin: 0;
+            padding-top: 20px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 1200px;
+            background: #fff;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .chatbox {
+            padding: 30px;
+            height: 60vh;
+            width: 100%;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            background: #fafafa;
+        }
+
+        .message {
+            max-width: 80%;
+            padding: 15px;
+            margin: 8px;
+            border-radius: 10px;
+        }
+
+        .user {
+            align-self: flex-end;
+            background-color: #007bff;
+            color: white;
+            text-align: left;  /* Ensure text is left-aligned */
+            padding: 15px;
+            border-radius: 10px;
+            font-size: 18px; /* Make text more readable */
+            max-width: 40%; /* Adjust width for readability */
+            word-wrap: break-word; /* Ensure long words wrap */
+            overflow-wrap: break-word;
+            white-space: normal; /* Prevents text from breaking weirdly */
+            box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.2); /* Subtle shadow for clarity */
+            border: 1px solid #0056b3; /* Slight border for better contrast */
+            padding: 15px 100px; /* Better spacing */
+            margin-right: 10px; /* Space from right edge */
+        }
+
+
+
+        .bot {
+            align-self: flex-start;
+            background-color: #e9ecef;
+            text-align: left;
+        }
+
+        .input-area {
+            display: flex;
+            align-items: center;
+            padding: 15px;
+            border-top: 1px solid #ddd;
+            background: white;
+        }
+
+        .file-upload-logo {
+            width: 35px;
+            height: 35px;
+            cursor: pointer;
+            margin-right: 15px;
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        input[type="text"] {
+            flex: 1;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 18px;
+        }
+
+        button {
+            margin-left: 10px;
+            padding: 12px 18px;
+            border: none;
+            background-color: #007bff;
+            color: white;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 18px;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+        }
+
+        #uploadStatus {
+            text-align: center;
+            margin-top: 15px;
+            font-weight: bold;
+            color: green;
+        }
+
+        .popup {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background-color: #28a745;
+            color: white;
+            padding: 15px;
+            border-radius: 5px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            display: none;
+            animation: fadeInOut 3s ease-in-out;
+        }
+
+        @keyframes fadeInOut {
+            0% { opacity: 0; transform: translateY(-10px); }
+            10% { opacity: 1; transform: translateY(0); }
+            90% { opacity: 1; transform: translateY(0); }
+            100% { opacity: 0; transform: translateY(-10px); }
+        }
+
+        @media (max-width: 768px) {
+            .chatbox {
+                height: 50vh;
+            }
+        }
+
+        #removeFiles {
+            margin-left: 10px;
+            padding: 10px 15px;
+            border: none;
+            background-color: #007bff;
+            color: white;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+
+        #removeFiles:hover {
+            background-color: #0056b3;
+        }
+
+        #fileList ul {
+            list-style-type: none;
+            padding: 0;
+        }
+
+        #fileList li {
+            background: #f1f1f1;
+            margin: 5px 0;
+            padding: 8px;
+            border-radius: 5px;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="chatbox" id="chatbox"></div>
+        
+        <div class="input-area">
+            <label for="fileInput">
+                <img src="static/download.png" alt="Upload" class="file-upload-logo">
+            </label>
+            <input type="file" id="fileInput" accept="application/pdf" multiple onchange="displayFileNames()">	
+            <div id="fileList"></div>
+            <button onclick="uploadFiles()">Upload</button>
+            <button id="removeFiles" onclick="clearFiles()">Remove All Files</button>
+        </div>
+        
+        <div id="faissStatus" style="text-align: center;padding: bottom 10px; color: rgb(23, 235, 23);"></div>
+        <div class="input-area">
+            <input type="text" id="queryInput" placeholder="Type your question...">
+            <button onclick="queryDocument()">Send</button>
+        </div>
+    </div>
+
+    <div id="uploadStatus"></div>
+    <div class="popup" id="popupMessage"></div>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            let chatbox = document.getElementById("chatbox");
+            let initialMessage = document.createElement("div");
+            initialMessage.classList.add("message", "bot");
+            initialMessage.innerText = "Hey, how can I help you?";
+            chatbox.appendChild(initialMessage);
+        });
+
+
+        function showPopup(message) {
+            const popup = document.getElementById("popupMessage");
+            popup.innerText = message;
+            popup.style.display = "block";
+
+            setTimeout(() => {
+                popup.style.display = "none";
+            }, 3000);
+        }
+
+        function displayFileNames() {
+            let fileInput = document.getElementById("fileInput");
+            let fileList = document.getElementById("fileList");
+            
+            fileList.innerHTML = ""; // Clear previous list
+
+            if (fileInput.files.length > 0) {
+                let ul = document.createElement("ul");
+                for (let i = 0; i < fileInput.files.length; i++) {
+                    let li = document.createElement("li");
+                    li.textContent = fileInput.files[i].name;
+                    ul.appendChild(li);
+                }
+                fileList.appendChild(ul);
+            }
+        }
+
+
+        function clearFiles() {
+            let fileInput = document.getElementById("fileInput");
+            let faissStatus = document.getElementById("faissStatus");
+            fileInput.value = "";
+            document.getElementById("fileList").innerHTML = "";
+            faissStatus.innerText = ""; // Clear FAISS status message when no files
+        }
+
+        async function uploadFiles() {
+            const fileInput = document.getElementById("fileInput");
+            const faissStatus = document.getElementById("faissStatus");
+
+            if (!fileInput.files.length) {
+                alert("Please select files.");
+                return;
+            }
+
+            const formData = new FormData();
+            for (let file of fileInput.files) {
+                formData.append("files", file);
+            }
+
+            try {
+                const response = await fetch("/api/upload/", {
+                    method: "POST",
+                    body: formData
+                });
+
+                const result = await response.json();
+                showPopup(result.message || result.error);
+
+                setTimeout(() => {
+                    showPopup("FAISS indices created successfully!");
+                    faissStatus.innerText = "FAISS indices created successfully!";
+                }, 2000);
+
+            } catch (error) {
+                showPopup("Error uploading files.");
+            }
+        }
+
+        async function queryDocument() {
+            const query = document.getElementById("queryInput").value.trim();
+            if (!query) {
+                alert("Please enter a query.");
+                return;
+            }
+
+            try {
+                const response = await fetch("/api/query/", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ query })
+                });
+
+                const result = await response.json();
+                console.log("API Response:", result);
+
+                // Extract the first valid answer
+                const answersObj = result.answers || {};
+                const firstKey = Object.keys(answersObj)[0];
+                const answer = answersObj[firstKey]?.answer || "No valid response.";
+
+                // Update chatbox
+                const chatbox = document.getElementById("chatbox");
+                chatbox.innerHTML += `<div class="message user">${query}</div>`;
+                chatbox.innerHTML += `<div class="message bot">${answer}</div>`;
+
+                chatbox.scrollTop = chatbox.scrollHeight; // Auto-scroll
+            } catch (error) {
+                console.error("Error fetching response:", error);
+                alert("Failed to get response.");
+            }
+        }
+    </script>
+        
+</body>
+</html>
