@@ -1,0 +1,7 @@
+langchain_groq
+django
+langchain
+djangorestframework
+langchain_community
+langchain_huggingface
+langchain_core
